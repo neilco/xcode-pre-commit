@@ -1,0 +1,48 @@
+#!/usr/bin/env ruby -w
+
+HOOK_PATH = "#{`pwd`.chomp}/.git/hooks/pre-commit"
+
+precommit = <<EOT
+#!/bin/sh
+
+PROJECT_NAME=\`basename \\`pwd\\`\`
+PROJECT_DIR=`pwd`
+PLIST="${PROJECT_DIR}/${PROJECT_NAME}/${PROJECT_NAME}-Info.plist"
+
+COMMITS=$(git rev-list HEAD 2>&1)
+if [[ $COMMITS == fatal* ]]; then
+	COMMITS=0
+else
+	COMMITS=$(($COMMITS | wc -l))
+fi
+
+# Set the version to the number of commits in the repo
+SHORTVERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" "${PLIST}")
+VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleVersion" "${PLIST}")
+if [[ "${SHORTVERSION}" == "" ]]; then
+	echo "No build number in $plist"
+	exit 2
+fi
+
+NEWVERSION="$SHORTVERSION.${COMMITS}"
+if [[ "${VERSION}" == "${NEWVERSION}" ]]; then
+	echo "No change to build number."
+	exit 0
+fi
+
+/usr/libexec/Plistbuddy -c "Set CFBundleVersion $NEWVERSION" "${PLIST}"
+echo "Bumped build number to $NEWVERSION"
+
+# Add modified plist to the staging area
+cd ${PROJECT_DIR}
+git add ${PLIST}
+
+exit 0
+
+EOT
+
+File.open(HOOK_PATH, 'w') do |file|
+	file.write(precommit)
+end
+
+File.chmod 0755, HOOK_PATH
